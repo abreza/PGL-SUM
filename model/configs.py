@@ -4,9 +4,6 @@ import torch
 from pathlib import Path
 import pprint
 
-save_dir = Path('../PGL-SUM/Summaries/PGL-SUM/exp1')
-
-
 def str2bool(v):
     """ Transcode string to boolean.
 
@@ -29,16 +26,16 @@ class Config(object):
         for k, v in kwargs.items():
             setattr(self, k, v)
 
-        self.set_dataset_dir(self.video_type)
+        self.set_dataset_dir(self.save_dir, self.video_type)
 
-    def set_dataset_dir(self, video_type='TVSum'):
+    def set_dataset_dir(self, save_dir, video_type='TVSum'):
         """ Function that sets as class attributes the necessary directories for logging important training information.
 
         :param str video_type: The Dataset being used, SumMe or TVSum.
         """
-        self.log_dir = save_dir.joinpath(video_type, 'logs/split' + str(self.split_index))
-        self.score_dir = save_dir.joinpath(video_type, 'results/split' + str(self.split_index))
-        self.save_dir = save_dir.joinpath(video_type, 'models/split' + str(self.split_index))
+        self.log_dir = Path(save_dir).joinpath(video_type, 'logs/split' + str(self.split_index))
+        self.score_dir = Path(save_dir).joinpath(video_type, 'results/split' + str(self.split_index))
+        self.save_dir = Path(save_dir).joinpath(video_type, 'models/split' + str(self.split_index))
 
     def __repr__(self):
         """Pretty-print configurations in alphabetical order"""
@@ -55,10 +52,13 @@ def get_config(parse=True, **optional_kwargs):
     """
     parser = argparse.ArgumentParser()
 
+    parser.add_argument('--save_dir', type=str, default='../PGL-SUM/Summaries', help='Save dir')
+
     # Mode
-    parser.add_argument('--mode', type=str, default='train', help='Mode for the configuration [train | test]')
+    parser.add_argument('--mode', type=str, default='test', help='Mode for the configuration [train | test]')
     parser.add_argument('--verbose', type=str2bool, default='false', help='Print or not training messages')
     parser.add_argument('--video_type', type=str, default='SumMe', help='Dataset to be used')
+    parser.add_argument('--zero_shot', action=argparse.BooleanOptionalAction)
 
     # Model
     parser.add_argument('--input_size', type=int, default=1024, help='Feature size expected in the input')
@@ -67,6 +67,9 @@ def get_config(parse=True, **optional_kwargs):
     parser.add_argument('--n_segments', type=int, default=4, help='Number of segments to split the video')
     parser.add_argument('--pos_enc', type=str, default="absolute", help="Type of pos encoding [absolute|relative|None]")
     parser.add_argument('--heads', type=int, default=8, help="Number of global heads for the attention module")
+
+    # Pretrain
+    parser.add_argument('--n_pretrain_epochs', type=int, default=None, help='Number of pretraining epochs')
 
     # Train
     parser.add_argument('--n_epochs', type=int, default=200, help='Number of training epochs')
@@ -77,6 +80,7 @@ def get_config(parse=True, **optional_kwargs):
     parser.add_argument('--split_index', type=int, default=0, help='Data split to be used [0-4]')
     parser.add_argument('--init_type', type=str, default="xavier", help='Weight initialization method')
     parser.add_argument('--init_gain', type=float, default=None, help='Scaling factor for the initialization methods')
+    parser.add_argument('--from_pretrain', type=str, default=None, help='Pretrain model path')
 
     if parse:
         kwargs = parser.parse_args()

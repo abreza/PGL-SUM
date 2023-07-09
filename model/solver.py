@@ -13,12 +13,13 @@ from utils import TensorboardWriter
 
 
 class Solver(object):
-    def __init__(self, config=None, train_loader=None, test_loader=None):
+    def __init__(self, config=None, pretrain_loader=None, train_loader=None, test_loader=None):
         """Class that Builds, Trains and Evaluates PGL-SUM model"""
         # Initialize variables to None, to be safe
         self.model, self.optimizer, self.writer = None, None, None
 
         self.config = config
+        self.pretrain_loader = pretrain_loader
         self.train_loader = train_loader
         self.test_loader = test_loader
 
@@ -44,7 +45,7 @@ class Solver(object):
         if self.config.mode == 'train':
             # Optimizer initialization
             self.optimizer = optim.Adam(self.model.parameters(), lr=self.config.lr, weight_decay=self.config.l2_req)
-            self.writer = TensorboardWriter(str(self.config.log_dir))
+            # self.writer = TensorboardWriter(str(self.config.log_dir))
 
     @staticmethod
     def init_weights(net, init_type="xavier", init_gain=1.4142):
@@ -71,7 +72,61 @@ class Solver(object):
 
     criterion = nn.MSELoss()
 
-    def train(self):
+    def pretrain(self):
+        for epoch_i in trange(self.config.n_pretrain_epochs, desc='Pretrain Epoch', ncols=80):
+            self.model.train()
+
+            loss_history = []
+            num_batches = int(len(self.pretrain_loader) / self.config.batch_size)  # full-batch or mini batch
+            iterator = iter(self.pretrain_loader)
+            for i in trange(num_batches, desc='Batch', ncols=80, leave=False):
+
+                if self.config.verbose:
+                    tqdm.write('Time to pretrain the model...')
+
+                self.optimizer.zero_grad()
+                for _ in trange(self.config.batch_size, desc='Video', ncols=80, leave=False):
+                    frame_features, target = next(iterator)
+
+
+                    frame_features = frame_features.to(self.config.device)
+                    target = target.to(self.config.device)
+
+                    if frame_features.dim() < 3 or frame_features.shape[1] < self.config.n_segments * self.config.heads:
+                        continue
+
+                    output, weights = self.model(frame_features.squeeze(0))
+                    loss = self.criterion(output.squeeze(0), target.squeeze(0))
+
+                    if self.config.verbose:
+                        tqdm.write(f'[{epoch_i}] pretrain loss: {loss.item()}')
+
+                    loss.backward()
+                    loss_history.append(loss.data)
+                # Update model parameters every 'batch_size' iterations
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config.clip)
+                self.optimizer.step()
+
+            # Mean loss of each training step
+            loss = torch.stack(loss_history).mean()
+
+            ckpt_path = str(self.config.save_dir) + f'/pretrain-epoch-{epoch_i}.pkl'
+            tqdm.write(f'Save parameters at {ckpt_path}')
+            torch.save(self.model.state_dict(), ckpt_path)
+
+            self.evaluate(epoch_i)
+
+    def load_weights(self, weights_file):
+        if os.path.isfile(weights_file):
+            print(f"Loading weights from {weights_file}")
+            weights = torch.load(weights_file)
+            self.model.load_state_dict(weights)
+        else:
+            print(f"No weights file found at {weights_file}. Training from scratch.")
+
+    def train(self, from_pretrain=None):
+        if from_pretrain is not None:
+            self.load_weights(from_pretrain)
         """ Main function to train the PGL-SUM model. """
         for epoch_i in trange(self.config.n_epochs, desc='Epoch', ncols=80):
             self.model.train()
@@ -107,25 +162,28 @@ class Solver(object):
             loss = torch.stack(loss_history).mean()
 
             # Plot
-            if self.config.verbose:
-                tqdm.write('Plotting...')
+            # if self.config.verbose:
+            #     tqdm.write('Plotting...')
 
-            self.writer.update_loss(loss, epoch_i, 'loss_epoch')
+            # self.writer.update_loss(loss, epoch_i, 'loss_epoch')
             # Uncomment to save parameters at checkpoint
-            if not os.path.exists(self.config.save_dir):
-                os.makedirs(self.config.save_dir)
+            # if not os.path.exists(self.config.save_dir):
+            #     os.makedirs(self.config.save_dir)
             # ckpt_path = str(self.config.save_dir) + f'/epoch-{epoch_i}.pkl'
             # tqdm.write(f'Save parameters at {ckpt_path}')
             # torch.save(self.model.state_dict(), ckpt_path)
 
             self.evaluate(epoch_i)
 
-    def evaluate(self, epoch_i, save_weights=False):
+    def evaluate(self, epoch_i, from_pretrain=None, save_weights=False):
         """ Saves the frame's importance scores for the test videos in json format.
 
         :param int epoch_i: The current training epoch.
         :param bool save_weights: Optionally, the user can choose to save the attention weights in a (large) h5 file.
         """
+        if from_pretrain is not None:
+            self.load_weights(from_pretrain)
+
         self.model.eval()
 
         weights_save_path = self.config.score_dir.joinpath("weights.h5")
