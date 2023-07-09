@@ -110,7 +110,7 @@ class Solver(object):
             # Mean loss of each training step
             loss = torch.stack(loss_history).mean()
 
-            ckpt_path = str(self.config.save_dir) + f'/pretrain-epoch-{epoch_i}.pkl'
+            ckpt_path = str(self.config.save_pretrain_model_dir) + f'/pretrain-epoch-{epoch_i}.pkl'
             tqdm.write(f'Save parameters at {ckpt_path}')
             torch.save(self.model.state_dict(), ckpt_path)
 

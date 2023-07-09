@@ -53,6 +53,7 @@ def get_config(parse=True, **optional_kwargs):
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--save_dir', type=str, default='../PGL-SUM/Summaries', help='Save dir')
+    parser.add_argument('--save_pretrain_model_dir', type=str, default='../PGL-SUM/PretrainedModels', help='Pretrained models dir')
 
     # Mode
     parser.add_argument('--mode', type=str, default='test', help='Mode for the configuration [train | test]')
